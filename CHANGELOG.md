@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.1] - 2026-10-13
+
 ### Added
 
 - One device per Tibber home: current, next, average, minimum and maximum
@@ -26,3 +28,6 @@ the notes of the version's GitHub Release.
   Netherlands (Gladys 5.2+): every half hour priced from the Tibber hourly
   price history, plus the monthly subscription.
 - "Test the connection" button.
+
+[Unreleased]: https://github.com/LM1LC3N7/gladys-tibber/compare/v0.1.1...HEAD
+[0.1.1]: https://github.com/LM1LC3N7/gladys-tibber/releases/tag/v0.1.1
