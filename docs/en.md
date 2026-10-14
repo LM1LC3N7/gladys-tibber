@@ -47,11 +47,13 @@ moved to it). The consumption is read every hour.
   same time.
 
 Two scene actions for a condition or a message that follows: **price now**
-gives `{{price}}`, `{{level}}`, `{{cheap}}`, `{{next_price}}`,
-`{{avg_price}}`, `{{window_start_time}}`…; **cheapest hours** gives the
-start and end (`{{start_time}}`, `{{end_time}}`, `{{start}}` and `{{end}}`
-as ISO dates for a "wait until"), `{{minutes_until_start}}` and the saving
-against the period.
+gives `price`, `level`, `cheap`, `next_price`, `avg_price`,
+`window_start_time`…; **cheapest hours** gives the start and end
+(`start_time`, `end_time`, `start` and `end` as ISO dates for a "wait
+until"), `minutes_until_start` and the saving against the period. The
+following actions of the scene find them in their variable list (written
+`{{<step>.<action>.<key>}}`, for instance `{{0.0.price}}` when this action
+is the first of the scene).
 
 ## Energy monitoring (Gladys 5.2 or newer)
 

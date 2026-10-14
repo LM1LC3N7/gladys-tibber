@@ -51,11 +51,13 @@ toutes les heures.
   recharge tournent en même temps.
 
 Deux actions de scène pour une condition ou un message qui suit : **prix
-actuel** donne `{{price}}`, `{{level}}`, `{{cheap}}`, `{{next_price}}`,
-`{{avg_price}}`, `{{window_start_time}}`… ; **heures les moins chères**
-donne le début et la fin (`{{start_time}}`, `{{end_time}}`, `{{start}}` et
-`{{end}}` en dates ISO pour un « attendre jusqu'à »), `{{minutes_until_start}}`
-et l'économie par rapport à la période.
+actuel** donne `price`, `level`, `cheap`, `next_price`, `avg_price`,
+`window_start_time`… ; **heures les moins chères** donne le début et la fin
+(`start_time`, `end_time`, `start` et `end` en dates ISO pour un « attendre
+jusqu'à »), `minutes_until_start` et l'économie par rapport à la période.
+Les actions suivantes de la scène les trouvent dans leur liste de variables
+(écrites `{{<étape>.<action>.<clé>}}`, par exemple `{{0.0.price}}` quand
+cette action est la première de la scène).
 
 ## Suivi énergétique (Gladys 5.2 ou plus récent)
 
