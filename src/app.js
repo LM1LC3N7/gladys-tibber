@@ -63,7 +63,7 @@ export class TibberApp {
     this.liveFactory = liveFactory;
     this.config = normalizeConfig();
     this.client = undefined;
-    /** homeId -> entry { home, slots, price, announced: Set, totals, live, lastLive, lastLiveAt, lastPower, liveConnected } */
+    /** homeId -> entry { home, slots, price, announced: Set, totals, live, lastLive, lastLiveAt, lastPower, liveConnected, consumptionWarned } */
     this.homes = new Map();
     this.timerIds = [];
     this.tickTimer = undefined;
@@ -71,7 +71,6 @@ export class TibberApp {
     this.lastStatus = undefined;
     /** false on a Gladys older than 5.2.0 (no publishEnergyConsumption). */
     this.energySupported = true;
-    this.consumptionWarned = false;
     this.generation = 0;
     this.lifecycle = Promise.resolve();
   }
@@ -228,6 +227,7 @@ export class TibberApp {
         lastLiveAt: 0,
         lastPower: known?.lastPower ?? null,
         liveConnected: false,
+        consumptionWarned: known?.consumptionWarned ?? false,
       });
     }
     this.homes = homes;
@@ -389,15 +389,15 @@ export class TibberApp {
           ids.feature(device, FEATURE.CONSUMPTION),
           intervals,
         );
-        this.consumptionWarned = false;
+        entry.consumptionWarned = false;
       } catch (err) {
         if (err?.status === 404) {
           // The device is not created yet: published again at the next hour.
           this.logger.debug?.(
             `Consumption of ${entry.home.name} not published yet: ${err.message}`,
           );
-        } else if (!this.consumptionWarned) {
-          this.consumptionWarned = true;
+        } else if (!entry.consumptionWarned) {
+          entry.consumptionWarned = true;
           this.logger.warn(`Consumption of ${entry.home.name} refused by Gladys: ${err.message}`);
         }
       }

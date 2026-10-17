@@ -73,22 +73,26 @@ added a second time.
 If you own a Pulse, Gladys also shows the live power and today's cost
 straight from Tibber.
 
-On a Gladys older than 5.2.0 the integration works (prices, sensors, live
-power, scenes), but the consumption is not sent to the energy monitoring;
-the status line says so.
+Gladys 5.2.0 or newer is required.
 
 ### Devices created with version 0.1.1
 
 Version 0.1.1 published yesterday's and today's consumption in features of
 the "daily consumption" type (`yesterday_consumption`, `today_consumption`).
-The energy monitoring counted them on top of the 30-minute consumption: the
-kWh and costs of those days may show twice there. Gladys never changes the
-type of a created feature, so these two features stay on the device, with
-their history, but receive nothing any more. The new values go to
-`yesterday_kwh` and `today_kwh`. To get them and remove the double count,
-delete the Tibber device and add it again from **Discovery** (its history is
-then lost), or delete only the two old features in the device editor if your
-Gladys version allows it.
+The costs and charts of the energy monitoring never used them (they read the
+30-minute consumption), but these daily kWh could be added to the 30-minute
+consumption in the weekly digest and in the answers of the Gladys MCP
+server.
+
+Gladys does not touch a created device until you click **Update**: until
+then, the two old features stay, with their history, but receive nothing
+any more. To move to the new sensors, open **Discovery**, then the Tibber
+device (badge **Already added**), and click **Update**. Gladys then adds
+`yesterday_kwh` and `today_kwh`, removes the two old features, and keeps the
+device, the history of every other feature (30-minute consumption and its
+cost, prices, costs) and the link with your energy contract. A scene or a
+dashboard chart set on one of the two old features must be pointed at
+`yesterday_kwh` or `today_kwh`.
 
 ## Troubleshooting
 

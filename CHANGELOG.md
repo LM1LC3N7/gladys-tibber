@@ -15,18 +15,19 @@ the notes of the version's GitHub Release.
 - Docs: the outputs of the scene actions come from the variable list
   (`{{<step>.<action>.<key>}}`), not `{{<key>}}`.
 - Energy: yesterday's and today's consumption were `energy-sensor` /
-  `daily-consumption` features fed by `publishStates`. Gladys attaches every
-  consumption feature to the main electric meter and prices it, so these kWh
-  were counted on top of the 30-minute consumption. They are now plain
+  `daily-consumption` features fed by `publishStates`. The costs and charts
+  of the energy monitoring never used them (they read the 30-minute
+  consumption), but these daily kWh could be added to the 30-minute ones in
+  the weekly digest and in the Gladys MCP answers. They are now plain
   sensors (`unknown` / `decimal`, kWh in the name) under new keys
   `yesterday_kwh` and `today_kwh`. The 30-minute `consumption`, fed only by
   `publishEnergyConsumption`, is the device's single energy source; no
   `energy` or `index` feature is published.
-- Gladys older than 5.2.0: the consumption is no longer sent to an endpoint
-  that does not exist; the status line says the energy monitoring needs
-  Gladys 5.2.0, everything else keeps working. A consumption refused by
-  Gladys (other than "device not created yet") is now logged as a warning,
-  once.
+- Gladys 5.2.0 or newer is required (as the manifest says). Should a
+  pre-release report an older version, the consumption is not sent and the
+  status line says the energy monitoring needs Gladys 5.2.0. A consumption
+  refused by Gladys (other than "device not created yet") is now logged as a
+  warning, once per home.
 - Live widget: today's kWh is shown as a value, so it works on devices
   created before and after this change.
 - Docs and manifest: the token is kept in the Gladys database, not
@@ -34,14 +35,14 @@ the notes of the version's GitHub Release.
 
 ### Existing devices (created with 0.1.1)
 
-- Gladys never changes the type of a created feature: the old
-  `yesterday_consumption` and `today_consumption` features stay on the
-  device, read only, with their history, and receive no new state. Their
-  past values may show twice in the energy monitoring. To get the new
-  sensors and remove the double count, delete the Tibber device and add it
-  again from Discovery (its history is then lost), or delete only the two
-  old features. Prices, the 30-minute consumption, costs, live power and
-  scenes need no action.
+- Gladys does not touch a created device until you click Update: until then
+  the old `yesterday_consumption` and `today_consumption` features stay, with
+  their history, and receive no new state. Open Discovery, the Tibber device
+  (badge "Already added"), and click Update: Gladys adds `yesterday_kwh` and
+  `today_kwh`, removes the two old features, and keeps the device, the
+  history of every other feature (30-minute consumption and its cost,
+  prices, costs) and the energy contract link. A scene or a dashboard chart
+  set on one of the two old features must be pointed at the new ones.
 
 ## [0.1.1] - 2026-10-13
 

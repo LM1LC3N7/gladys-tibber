@@ -78,23 +78,27 @@ les scènes, jamais additionnés une seconde fois.
 Avec un Pulse, Gladys affiche aussi la puissance en direct et le coût du
 jour directement depuis Tibber.
 
-Sur un Gladys plus ancien que 5.2.0, l'intégration fonctionne (prix, capteurs,
-puissance en direct, scènes), mais la consommation n'est pas envoyée au suivi
-énergétique ; la ligne d'état le dit.
+Gladys 5.2.0 ou plus récent est requis.
 
 ### Appareils créés avec la version 0.1.1
 
 La version 0.1.1 publiait la consommation d'hier et celle du jour dans des
 fonctions de type « consommation journalière » (`yesterday_consumption`,
-`today_consumption`). Le suivi énergétique les comptait en plus de la
-consommation par demi-heure : les kWh et les coûts de ces jours-là peuvent y
-apparaître en double. Gladys ne change jamais le type d'une fonction déjà
-créée, donc ces deux fonctions restent sur l'appareil, avec leur historique,
-mais ne reçoivent plus rien. Les nouvelles valeurs vont dans `yesterday_kwh`
-et `today_kwh`. Pour les obtenir et retirer le double compte, supprimez
-l'appareil Tibber puis ajoutez-le de nouveau depuis **Découverte** (son
-historique est alors perdu), ou supprimez seulement les deux anciennes
-fonctions dans l'édition de l'appareil si votre version de Gladys le permet.
+`today_consumption`). Les coûts et les graphiques du suivi énergétique n'en
+ont jamais tenu compte (ils lisent la consommation par demi-heure), mais ces
+kWh journaliers pouvaient s'ajouter à la consommation par demi-heure dans le
+résumé hebdomadaire et dans les réponses du serveur MCP de Gladys.
+
+Gladys ne touche pas un appareil créé tant que vous ne cliquez pas **Mettre
+à jour** : d'ici là, les deux anciennes fonctions restent, avec leur
+historique, mais ne reçoivent plus rien. Pour passer aux nouveaux capteurs,
+ouvrez **Découverte**, puis l'appareil Tibber (badge **Déjà ajouté**), et
+cliquez **Mettre à jour**. Gladys ajoute alors `yesterday_kwh` et
+`today_kwh`, retire les deux anciennes fonctions, et garde l'appareil,
+l'historique de toutes les autres fonctions (consommation par demi-heure et
+son coût, prix, coûts) et le lien avec votre contrat d'énergie. Une scène ou
+un graphique de tableau de bord posé sur l'une des deux anciennes fonctions
+est à repointer vers `yesterday_kwh` ou `today_kwh`.
 
 ## Dépannage
 

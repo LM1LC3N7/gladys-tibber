@@ -19,7 +19,18 @@ const FILES = [
 
 // "Ã" and "Â" followed by a Latin-1 symbol, and the "â€" family: what UTF-8
 // becomes when read as Windows-1252.
-const MOJIBAKE = /[ÃÂ][\u0080-¿]|â€/;
+// Uppercase accents decode to "Ã" + a Windows-1252 symbol above 0x80 (Ã‰ for
+// É, Ã€ for À, Ã‡ for Ç, ÃŽ for Î...).
+const MOJIBAKE = /[ÃÂ][\u0080-¿ŒœŠšŸŽžƒˆ˜–—‘-„†-•…‰‹›€™]|â€/;
+
+test('the mojibake check catches lowercase and uppercase accents', () => {
+  for (const word of ['Ã©tÃ©', 'Ã‰tÃ©', 'Ã€ jour', 'FranÃ‡ais', 'â€™']) {
+    assert.ok(MOJIBAKE.test(word), word);
+  }
+  for (const word of ['été', 'Été', 'À jour', 'Ça', 'l’heure', 'Prix — Tibber']) {
+    assert.ok(!MOJIBAKE.test(word), word);
+  }
+});
 
 for (const file of FILES) {
   test(`${file} is clean UTF-8`, () => {

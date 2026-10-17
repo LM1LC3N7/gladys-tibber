@@ -28,8 +28,8 @@
 - **Energy (fix after 0.1.1)**: the only energy source of a home device is
   `consumption` (`energy-sensor` / `thirty-minutes-consumption`), fed with
   `publishEnergyConsumption` (Gladys >= 5.2.0), never with `publishStates`.
-  Every consumption feature is attached to the main meter and priced by the
-  core, so yesterday's and today's kWh are plain sensors (`unknown` /
+  Every consumption feature is attached to the main meter and summed where
+  the core adds consumptions up (weekly digest, MCP), so yesterday's and today's kWh are plain sensors (`unknown` /
   `decimal`, no unit: the core lists none for `unknown`) under new keys
   `yesterday_kwh` / `today_kwh`. No `energy` / `index` feature (the Pulse
   `lastMeterConsumption` is a cumulative index, but the core would derive a
@@ -38,12 +38,16 @@
   `yesterday_cost`) are `currency` sensors, not energy cost types.
 - **Migration**: the 0.1.1 keys `yesterday_consumption` / `today_consumption`
   (`daily-consumption`) are frozen in `LEGACY_FEATURE`, never offered nor
-  published again; Gladys keeps them, read only, with their history, on the
-  devices already created. Documented in docs fr/en and CHANGELOG.
-- **Gladys < 5.2.0**: `getStatus().gladys_version` read at start; below
-  5.2.0 no `publishEnergyConsumption` call and a status line that says so;
-  an unreadable version is tried anyway (errors handled: 404 = device not
-  created, debug; anything else warned once).
+  published again (a test forbids reusing them). Gladys keeps them on a
+  created device until the user clicks Discovery → Update, which adds the new
+  keys, removes the old ones and keeps the device id, the other features'
+  history and the contract's meter link. Documented in docs fr/en and
+  CHANGELOG.
+- **Gladys 5.2.0 required** (manifest; older cores refuse `energy_contracts`).
+  Fallback kept for pre-releases: `getStatus().gladys_version` read at
+  start; below 5.2.0 no `publishEnergyConsumption` call and a status line
+  that says so; an unreadable version is tried anyway (404 = device not
+  created, debug; anything else warned once per home).
 
 ## Ideas
 

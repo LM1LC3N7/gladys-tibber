@@ -8,6 +8,7 @@ import assert from 'node:assert/strict';
 import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
 import { TibberApp } from '../src/app.js';
 import { ACTIONS, SCENE_ACTIONS, SCENE_TRIGGERS, WIDGETS } from '../src/constants.js';
+import { FEATURE, LEGACY_FEATURE } from '../src/devices.js';
 import { LiveSubscription } from '../src/tibber/live.js';
 import { installFetch, json } from './helpers/fakeFetch.js';
 import { createSocketFactory } from './helpers/fakeSocket.js';
@@ -216,6 +217,13 @@ test('energy: one consumption source only, never a daily total, an energy or an 
   }
 });
 
+test('the 0.1.1 keys are never reused for a new feature', () => {
+  const current = new Set(Object.values(FEATURE));
+  for (const key of Object.values(LEGACY_FEATURE)) {
+    assert.ok(!current.has(key), `${key} is frozen (a daily-consumption on 0.1.1 devices)`);
+  }
+});
+
 test('energy: no state is ever published to a consumption feature (publishStates)', async () => {
   const { app, gladys, sockets, timers } = setup({ devices: CREATED });
   await gladys.connect();
@@ -284,6 +292,32 @@ test('a consumption refused by Gladys (not a 404) is warned once, not every hour
   await app.start({ access_token: 'tok' });
   await timers.runIntervals();
   assert.equal(warnings.filter((w) => /refused by Gladys/.test(w)).length, 1);
+  await app.stop();
+});
+
+test('two homes, one refused by Gladys: its warning is not repeated every hour', async () => {
+  const warnings = [];
+  const OTHER = 'aaaaaaaa-0000-4000-8000-000000000002';
+  const two = viewer();
+  two.homes.push({ ...two.homes[0], id: OTHER, appNickname: 'Byen' });
+  const { app, gladys, timers } = setup({
+    routes: { viewer: () => gql({ viewer: two }) },
+    logger: { ...quiet, warn: (m) => warnings.push(m) },
+  });
+  const accepted = [];
+  gladys.publishEnergyConsumption = async (featureId) => {
+    if (featureId.includes(OTHER)) {
+      throw Object.assign(new Error('not a consumption'), { status: 400 });
+    }
+    accepted.push(featureId);
+    return { success: true };
+  };
+  await gladys.connect();
+  await app.start({ access_token: 'tok' });
+  await timers.runIntervals();
+  await timers.runIntervals();
+  assert.ok(accepted.length >= 3, 'the accepted home is published every hour');
+  assert.equal(warnings.filter((w) => /Byen refused by Gladys/.test(w)).length, 1);
   await app.stop();
 });
 

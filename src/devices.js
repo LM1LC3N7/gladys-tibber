@@ -8,8 +8,9 @@
 // `consumption` (energy-sensor / thirty-minutes-consumption), fed after the
 // fact with publishEnergyConsumption (Gladys >= 5.2.0), never with
 // publishStates. Every consumption feature is attached to the main electric
-// meter and priced by the core, so a second one (a daily total) would count the
-// same kWh twice. No `energy` / `index` feature either: the core reads them as
+// meter, so a second one (a daily total) would be summed with it wherever the
+// core adds the consumptions up (weekly digest, MCP). No `energy` / `index`
+// feature either: the core reads them as
 // cumulative indexes and derives its own consumption and cost from them.
 // Today's and yesterday's kWh are therefore plain sensors (unknown / decimal,
 // no unit: the core lists none for `unknown`, kWh in the name).
@@ -47,9 +48,11 @@ export const FEATURE = {
 
 /**
  * Keys of v0.1.1, created as energy-sensor / daily-consumption and fed by
- * publishStates (wrong: double counted with `consumption`). Never offered again
+ * publishStates (wrong: summed with `consumption` in the weekly digest and
+ * MCP). Never reused, never offered again
  * nor published: on devices created with v0.1.1 they stay, read only, with
- * their history (Gladys never changes the type of a created feature).
+ * their history, until the user clicks Update in Discovery (Gladys does not
+ * touch a created device before that; the update then removes them).
  */
 export const LEGACY_FEATURE = {
   YESTERDAY_KWH: 'yesterday_consumption',
