@@ -57,8 +57,8 @@
         "fr": "Jeton d'accès"
       },
       "description": {
-        "en": "Stored encrypted by Gladys and only sent to api.tibber.com.",
-        "fr": "Stocké chiffré par Gladys et envoyé uniquement à api.tibber.com."
+        "en": "Kept by Gladys in its database, never shown again, only sent to Tibber.",
+        "fr": "Gardé par Gladys dans sa base, jamais réaffiché, envoyé seulement à Tibber."
       }
     },
     {

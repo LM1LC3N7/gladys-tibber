@@ -124,12 +124,17 @@ export function liveWidget({ gladys, home, live, liveEnabled, language = 'en' })
     unit: 'W',
     color: (live.power ?? 0) > max * 0.7 ? WIDGET_COLORS.WARNING : WIDGET_COLORS.PRIMARY,
   });
-  components.push({
-    type: 'value',
-    label: T.widget.todayKwh,
-    device_feature: ids.feature(id, FEATURE.TODAY_KWH),
-    icon: 'zap',
-  });
+  if (live.accumulatedConsumption !== null) {
+    // A literal value, not a feature: devices created with v0.1.1 have the old
+    // `today_consumption` feature, newer ones `today_kwh`.
+    components.push({
+      type: 'value',
+      label: T.widget.todayKwh,
+      value: Math.round(live.accumulatedConsumption * 100) / 100,
+      unit: 'kWh',
+      icon: 'zap',
+    });
+  }
   components.push({
     type: 'value',
     label: T.widget.todayCost,

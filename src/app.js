@@ -26,7 +26,7 @@ import {
   parseExternalId,
   priceStates,
 } from './devices.js';
-import { hoursToFetch, intervalCosts, rangeStart } from './energy.js';
+import { hoursToFetch, intervalCosts, rangeStart, supportsEnergyConsumption } from './energy.js';
 import { T } from './i18n.js';
 import { PERIODS, cheapestWindowOutputs, priceOutputs } from './scenes.js';
 import { TibberClient } from './tibber/api.js';
@@ -69,6 +69,9 @@ export class TibberApp {
     this.tickTimer = undefined;
     this.tomorrowTimer = undefined;
     this.lastStatus = undefined;
+    /** false on a Gladys older than 5.2.0 (no publishEnergyConsumption). */
+    this.energySupported = true;
+    this.consumptionWarned = false;
     this.generation = 0;
     this.lifecycle = Promise.resolve();
   }
@@ -98,6 +101,7 @@ export class TibberApp {
       await this.setStatus(false, T.noToken);
       return;
     }
+    await this.checkEnergySupport();
     try {
       await this.discover();
       await this.refreshPrices();
@@ -169,7 +173,32 @@ export class TibberApp {
 
   async reportOk() {
     const live = [...this.homes.values()].filter((e) => e.liveConnected).map((e) => e.home.name);
-    await this.setStatus(true, T.ok(this.homes.size, live.join(', ')));
+    await this.setStatus(true, T.ok(this.homes.size, live.join(', '), !this.energySupported));
+  }
+
+  /**
+   * publishEnergyConsumption exists from Gladys 5.2.0. On an older Gladys the
+   * consumption is not sent at all (no crash, no request refused every hour)
+   * and the status says why; prices, sensors and live power keep working. An
+   * unreadable status gives the benefit of the doubt.
+   */
+  async checkEnergySupport() {
+    if (typeof this.gladys.publishEnergyConsumption !== 'function') {
+      this.energySupported = false;
+    } else {
+      try {
+        const status = await this.gladys.getStatus();
+        this.energySupported = supportsEnergyConsumption(status?.gladys_version);
+      } catch (err) {
+        this.logger.debug?.(`Gladys version unknown: ${err.message}`);
+        this.energySupported = true;
+      }
+    }
+    if (!this.energySupported) {
+      this.logger.warn(
+        'Gladys is older than 5.2.0: the consumption is not sent to the energy monitoring.',
+      );
+    }
   }
 
   // --- Discovery -------------------------------------------------------------------
@@ -350,19 +379,27 @@ export class TibberApp {
           this.logger.warn(`Daily states of ${entry.home.name} failed: ${err.message}`),
         );
       const intervals = halfHours(nodes);
-      if (intervals.length === 0) {
+      if (intervals.length === 0 || !this.energySupported) {
         continue;
       }
       try {
+        // The only path of a consumption into Gladys: dated 30-minute
+        // intervals, never publishStates (see src/devices.js).
         await this.gladys.publishEnergyConsumption(
           ids.feature(device, FEATURE.CONSUMPTION),
           intervals,
         );
+        this.consumptionWarned = false;
       } catch (err) {
-        // 404: the device is not created yet; 400: an interval too recent.
-        this.logger.debug?.(
-          `Energy consumption of ${entry.home.name} not published: ${err.message}`,
-        );
+        if (err?.status === 404) {
+          // The device is not created yet: published again at the next hour.
+          this.logger.debug?.(
+            `Consumption of ${entry.home.name} not published yet: ${err.message}`,
+          );
+        } else if (!this.consumptionWarned) {
+          this.consumptionWarned = true;
+          this.logger.warn(`Consumption of ${entry.home.name} refused by Gladys: ${err.message}`);
+        }
       }
     }
   }

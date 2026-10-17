@@ -15,9 +15,9 @@ export const T = {
     en: 'The Tibber account has no home with an active subscription.',
     fr: "Le compte Tibber n'a aucune maison avec un abonnement actif.",
   },
-  ok: (homes, live) => ({
-    en: `Connected: ${homes} home${homes > 1 ? 's' : ''}${live ? `, live power on ${live}` : ''}.`,
-    fr: `Connecté : ${homes} maison${homes > 1 ? 's' : ''}${live ? `, puissance en direct sur ${live}` : ''}.`,
+  ok: (homes, live, oldGladys = false) => ({
+    en: `Connected: ${homes} home${homes > 1 ? 's' : ''}${live ? `, live power on ${live}` : ''}.${oldGladys ? ' The consumption is not sent to the energy monitoring: it needs Gladys 5.2.0 or later.' : ''}`,
+    fr: `Connecté : ${homes} maison${homes > 1 ? 's' : ''}${live ? `, puissance en direct sur ${live}` : ''}.${oldGladys ? " La consommation n'est pas envoyée au suivi énergétique : il faut Gladys 5.2.0 ou plus récent." : ''}`,
   }),
   unreachable: (message) => ({
     en: `Tibber is unreachable: ${message}. Retrying at the next refresh.`,

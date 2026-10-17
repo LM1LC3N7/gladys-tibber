@@ -43,6 +43,8 @@ function setup({
   now = NOW,
   realTime = true,
   devices = [],
+  gladysVersion = 'v5.2.0',
+  logger = quiet,
 } = {}) {
   const state = { tomorrow: true };
   fake = installFetch({
@@ -70,13 +72,21 @@ function setup({
       }),
     ...routes,
   });
-  const gladys = createFakeGladys({ selector: 'tibber', config, devices });
+  const gladys = createFakeGladys({
+    selector: 'tibber',
+    config,
+    devices,
+    status: {
+      gladys_version: gladysVersion,
+      service: { id: 'fake-service-id', selector: 'tibber', status: 'RUNNING', version: '0.1.1' },
+    },
+  });
   const timers = createFakeTimers();
   const clock = { now };
   const sockets = createSocketFactory();
   const app = new TibberApp({
     gladys,
-    logger: quiet,
+    logger,
     now: () => clock.now,
     timers,
     liveFactory: (options) =>
@@ -121,7 +131,8 @@ test('start discovers the home, publishes the prices and schedules everything', 
   assert.equal(gladys.fake.lastState(`${HOME}:next_price`), 0.85);
   assert.equal(gladys.fake.lastState(`${HOME}:min_price`), 0.49);
   assert.equal(gladys.fake.lastState(`${HOME}:cheap_period`), 0);
-  assert.equal(gladys.fake.lastState(`${HOME}:yesterday_consumption`), 36);
+  assert.equal(gladys.fake.lastState(`${HOME}:yesterday_kwh`), 36);
+  assert.equal(gladys.fake.lastState(`${HOME}:yesterday_consumption`), undefined, 'legacy key');
   assert.equal(gladys.fake.connectionStatus.connected, true);
   assert.match(gladys.fake.connectionStatus.message.en, /1 home/);
   assert.equal(timers.intervals().length, 2, 'prices and consumption');
@@ -158,6 +169,122 @@ test('the energy consumption is published once the device exists', async () => {
     published[0].feature ?? published[0].external_id ?? published[0].device_feature_external_id,
     `${HOME}:consumption`,
   );
+});
+
+const CREATED = [
+  {
+    external_id: HOME,
+    name: 'Tibber Hytta',
+    features: [
+      {
+        external_id: `${HOME}:consumption`,
+        category: 'energy-sensor',
+        type: 'thirty-minutes-consumption',
+      },
+    ],
+  },
+];
+
+const ENERGY_SOURCE_TYPES = ['daily-consumption', 'thirty-minutes-consumption', 'energy', 'index'];
+
+test('energy: one consumption source only, never a daily total, an energy or an index', async () => {
+  const { app, gladys } = setup();
+  await app.start({ access_token: 'tok' });
+  const [device] = gladys.fake.discoveredDevices;
+  const sources = device.features.filter(
+    (f) => f.category === 'energy-sensor' && ENERGY_SOURCE_TYPES.includes(f.type),
+  );
+  assert.deepEqual(
+    sources.map((f) => [f.external_id.split(':').at(-1), f.type]),
+    [['consumption', 'thirty-minutes-consumption']],
+  );
+  assert.ok(
+    !device.features.some((f) => f.category === 'energy-production-sensor' && f.type !== 'power'),
+    'no production index / daily production',
+  );
+  for (const key of ['yesterday_kwh', 'today_kwh']) {
+    const f = device.features.find((x) => x.external_id.endsWith(`:${key}`));
+    assert.equal(f.category, 'unknown', key);
+    assert.equal(f.type, 'decimal', key);
+    assert.equal(f.unit, undefined, `${key}: the core lists no unit for unknown`);
+  }
+  for (const key of ['yesterday_consumption', 'today_consumption']) {
+    assert.ok(
+      !device.features.some((f) => f.external_id.endsWith(`:${key}`)),
+      `${key} not offered`,
+    );
+  }
+});
+
+test('energy: no state is ever published to a consumption feature (publishStates)', async () => {
+  const { app, gladys, sockets, timers } = setup({ devices: CREATED });
+  await gladys.connect();
+  await app.start({ access_token: 'tok' });
+  const [socket] = sockets.sockets;
+  socket.open();
+  socket.receive({ type: 'connection_ack' });
+  socket.receive({
+    id: '1',
+    type: 'next',
+    payload: { data: { liveMeasurement: measurement(800) } },
+  });
+  await new Promise((r) => setImmediate(r));
+  await timers.runIntervals();
+  const keys = new Set(
+    gladys.fake.states.map((s) => s.device_feature_external_id.split(':').at(-1)),
+  );
+  for (const key of ['consumption', 'yesterday_consumption', 'today_consumption']) {
+    assert.ok(!keys.has(key), `${key} must not go through POST /state`);
+  }
+  assert.ok(keys.has('today_kwh') && keys.has('yesterday_kwh'));
+  assert.ok(gladys.fake.publishedEnergyConsumption.length > 0);
+  await app.stop();
+});
+
+test('Gladys older than 5.2.0: no publishEnergyConsumption, no crash, a clear status', async () => {
+  const warnings = [];
+  const { app, gladys } = setup({
+    devices: CREATED,
+    gladysVersion: 'v4.86.0',
+    logger: { ...quiet, warn: (m) => warnings.push(m) },
+  });
+  await gladys.connect();
+  await app.start({ access_token: 'tok' });
+  assert.equal(gladys.fake.publishedEnergyConsumption.length, 0);
+  assert.equal(gladys.fake.lastState(`${HOME}:price`), 0.9, 'the prices still work');
+  assert.equal(gladys.fake.lastState(`${HOME}:yesterday_kwh`), 36, 'the plain sensors too');
+  assert.equal(gladys.fake.connectionStatus.connected, true);
+  assert.match(gladys.fake.connectionStatus.message.en, /needs Gladys 5\.2\.0/);
+  assert.match(gladys.fake.connectionStatus.message.fr, /il faut Gladys 5\.2\.0/);
+  assert.ok(warnings.some((w) => /older than 5\.2\.0/.test(w)));
+  await app.stop();
+});
+
+test('Gladys version unreadable: the consumption is still tried', async () => {
+  const { app, gladys } = setup({ devices: CREATED });
+  gladys.getStatus = async () => {
+    throw new Error('boom');
+  };
+  await gladys.connect();
+  await app.start({ access_token: 'tok' });
+  assert.ok(gladys.fake.publishedEnergyConsumption.length > 0);
+  assert.doesNotMatch(gladys.fake.connectionStatus.message.en, /5\.2\.0/);
+});
+
+test('a consumption refused by Gladys (not a 404) is warned once, not every hour', async () => {
+  const warnings = [];
+  const { app, gladys, timers } = setup({
+    devices: CREATED,
+    logger: { ...quiet, warn: (m) => warnings.push(m) },
+  });
+  gladys.publishEnergyConsumption = async () => {
+    throw Object.assign(new Error('not a consumption'), { status: 400 });
+  };
+  await gladys.connect();
+  await app.start({ access_token: 'tok' });
+  await timers.runIntervals();
+  assert.equal(warnings.filter((w) => /refused by Gladys/.test(w)).length, 1);
+  await app.stop();
 });
 
 test('the tick moves the sensors and fires the cheap / level transitions', async () => {
@@ -208,7 +335,8 @@ test('live measurements are throttled, published and fire the power marks', asyn
   await new Promise((r) => setImmediate(r));
   assert.equal(gladys.fake.lastState(`${HOME}:power`), 800);
   assert.equal(gladys.fake.lastState(`${HOME}:voltage_l1`), 230.1);
-  assert.equal(gladys.fake.lastState(`${HOME}:today_consumption`), 12.345);
+  assert.equal(gladys.fake.lastState(`${HOME}:today_kwh`), 12.345);
+  assert.equal(gladys.fake.lastState(`${HOME}:today_consumption`), undefined, 'legacy key');
   // 2 seconds later: throttled, nothing published.
   clock.now = NOW + 2000;
   socket.receive({
@@ -238,6 +366,9 @@ test('live measurements are throttled, published and fire the power marks', asyn
   const widget = (await gladys.fake.widgetGet(WIDGETS.LIVE, { settings: { device: HOME } })).data
     .content;
   assert.equal(widget.components.find((c) => c.type === 'gauge').device_feature, `${HOME}:power`);
+  const today = widget.components.find((c) => c.type === 'value' && c.unit === 'kWh');
+  assert.equal(today.value, 12.35, "today's kWh as a value: works on v0.1.1 devices too");
+  assert.equal(today.device_feature, undefined);
   await app.stop();
 });
 

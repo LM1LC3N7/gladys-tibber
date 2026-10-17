@@ -23,6 +23,28 @@ export function intervalCosts(intervals, prices, { fallbackPrice = null } = {}) 
   });
 }
 
+/** The first Gladys version with publishEnergyConsumption. */
+export const ENERGY_CONSUMPTION_MIN_GLADYS = [5, 2, 0];
+
+/**
+ * Whether a Gladys version (`v5.2.0`, `5.2.1-beta`...) accepts
+ * publishEnergyConsumption. An unreadable version is given the benefit of the
+ * doubt (`true`): the call itself then says what the core accepts.
+ */
+export function supportsEnergyConsumption(version) {
+  const match = /(\d+)\.(\d+)\.(\d+)/.exec(String(version ?? ''));
+  if (!match) {
+    return true;
+  }
+  const parts = match.slice(1).map(Number);
+  for (let i = 0; i < 3; i += 1) {
+    if (parts[i] !== ENERGY_CONSUMPTION_MIN_GLADYS[i]) {
+      return parts[i] > ENERGY_CONSUMPTION_MIN_GLADYS[i];
+    }
+  }
+  return true;
+}
+
 /** How many hourly prices cover the intervals, with a margin. */
 export function hoursToFetch(intervals) {
   if (intervals.length === 0) {

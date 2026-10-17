@@ -26,7 +26,10 @@ Gladys ⇄ SDK ⇄ src/app.js (TibberApp)
   hour; tomorrow retried every 10 minutes from 12:45 local time. A tick at
   the end of every slot moves the sensors and fires the transitions.
 - **Consumption**: the last 48 hourly nodes every hour; complete hours are
-  split in two halves and published with `publishEnergyConsumption`.
+  split in two halves and published with `publishEnergyConsumption`
+  (Gladys >= 5.2.0, skipped below with a status message): the device's only
+  energy source. Yesterday's / today's kWh are plain `unknown` sensors, never
+  `daily-consumption`, `energy` or `index` (see `src/devices.js`).
 - **Live**: one websocket per home with `realTimeConsumptionEnabled`, the
   `liveMeasurement` subscription, states published at most every 10 s,
   reconnection with backoff (5 s to 5 min).

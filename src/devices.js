@@ -2,6 +2,17 @@
 // The Gladys device of a Tibber home and its states. Pure.
 //
 // External id (forever): home:<tibber home id>
+//
+// Energy (rules of the Gladys core, server/utils/constants.js and the
+// energy-monitoring service): the ONLY energy source of the device is
+// `consumption` (energy-sensor / thirty-minutes-consumption), fed after the
+// fact with publishEnergyConsumption (Gladys >= 5.2.0), never with
+// publishStates. Every consumption feature is attached to the main electric
+// meter and priced by the core, so a second one (a daily total) would count the
+// same kWh twice. No `energy` / `index` feature either: the core reads them as
+// cumulative indexes and derives its own consumption and cost from them.
+// Today's and yesterday's kWh are therefore plain sensors (unknown / decimal,
+// no unit: the core lists none for `unknown`, kWh in the name).
 // -----------------------------------------------------------------------------
 
 import {
@@ -19,12 +30,12 @@ export const FEATURE = {
   MAX: 'max_price',
   CHEAP: 'cheap_period',
   CONSUMPTION: 'consumption',
-  YESTERDAY_KWH: 'yesterday_consumption',
+  YESTERDAY_KWH: 'yesterday_kwh',
   YESTERDAY_COST: 'yesterday_cost',
   // live
   POWER: 'power',
   PRODUCTION: 'power_production',
-  TODAY_KWH: 'today_consumption',
+  TODAY_KWH: 'today_kwh',
   TODAY_COST: 'today_cost',
   VOLTAGE_1: 'voltage_l1',
   VOLTAGE_2: 'voltage_l2',
@@ -32,7 +43,17 @@ export const FEATURE = {
   CURRENT_1: 'current_l1',
   CURRENT_2: 'current_l2',
   CURRENT_3: 'current_l3',
-  METER_INDEX: 'meter_index',
+};
+
+/**
+ * Keys of v0.1.1, created as energy-sensor / daily-consumption and fed by
+ * publishStates (wrong: double counted with `consumption`). Never offered again
+ * nor published: on devices created with v0.1.1 they stay, read only, with
+ * their history (Gladys never changes the type of a created feature).
+ */
+export const LEGACY_FEATURE = {
+  YESTERDAY_KWH: 'yesterday_consumption',
+  TODAY_KWH: 'today_consumption',
 };
 
 export const ids = {
@@ -95,11 +116,10 @@ export function buildHomeDevice(gladys, home) {
     feature(
       id,
       FEATURE.YESTERDAY_KWH,
-      "Yesterday's consumption",
-      C.ENERGY_SENSOR,
-      T.ENERGY_SENSOR.DAILY_CONSUMPTION,
+      "Yesterday's consumption (kWh)",
+      C.UNKNOWN,
+      T.SENSOR.DECIMAL,
       {
-        unit: U.KILOWATT_HOUR,
         max: 10000,
       },
     ),
@@ -119,14 +139,9 @@ export function buildHomeDevice(gladys, home) {
         T.ENERGY_PRODUCTION_SENSOR.POWER,
         { unit: U.WATT, max: 100000 },
       ),
-      feature(
-        id,
-        FEATURE.TODAY_KWH,
-        "Today's consumption",
-        C.ENERGY_SENSOR,
-        T.ENERGY_SENSOR.DAILY_CONSUMPTION,
-        { unit: U.KILOWATT_HOUR, max: 10000 },
-      ),
+      feature(id, FEATURE.TODAY_KWH, "Today's consumption (kWh)", C.UNKNOWN, T.SENSOR.DECIMAL, {
+        max: 10000,
+      }),
       money(FEATURE.TODAY_COST, "Today's cost"),
       feature(id, FEATURE.VOLTAGE_1, 'Voltage L1', C.ENERGY_SENSOR, T.ENERGY_SENSOR.VOLTAGE, {
         unit: U.VOLT,

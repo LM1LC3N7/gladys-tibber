@@ -13,7 +13,12 @@ import {
   slotsOf,
   stats,
 } from '../src/tibber/model.js';
-import { intervalCosts, hoursToFetch, rangeStart } from '../src/energy.js';
+import {
+  intervalCosts,
+  hoursToFetch,
+  rangeStart,
+  supportsEnergyConsumption,
+} from '../src/energy.js';
 import { cheapestWindowOutputs, priceOutputs } from '../src/scenes.js';
 import {
   NOW,
@@ -164,4 +169,15 @@ test('scene outputs', () => {
     cheapestWindowOutputs([], { period: 'next_24h', hours: 2, now: NOW, timeZone: TZ }).found,
     false,
   );
+});
+
+test('publishEnergyConsumption needs Gladys 5.2.0', () => {
+  for (const v of ['v5.2.0', '5.2.0', 'v5.2.1', 'v5.10.0', 'v6.0.0', '5.2.0-beta.1']) {
+    assert.equal(supportsEnergyConsumption(v), true, v);
+  }
+  for (const v of ['v4.86.0', 'v5.1.9', '5.0.0', 'v4.99.99']) {
+    assert.equal(supportsEnergyConsumption(v), false, v);
+  }
+  assert.equal(supportsEnergyConsumption(undefined), true, 'unknown: benefit of the doubt');
+  assert.equal(supportsEnergyConsumption('dev'), true);
 });

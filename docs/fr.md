@@ -7,6 +7,8 @@ avec un Tibber Pulse ou Watty, la puissance en direct. Tibber est une marque
 de Tibber AS. Disponible là où Tibber vend de l'électricité : Norvège, Suède,
 Allemagne et Pays-Bas.
 
+Jamais testé avec un vrai compte Tibber ni un vrai Pulse pour l'instant.
+
 ## Ce que vous obtenez
 
 | Surface                         | Contenu                                                                                                                                                                                                                                                                     |
@@ -68,10 +70,31 @@ l'intégration de tarifer chaque demi-heure depuis votre propre historique de
 prix Tibber (prix de l'énergie, TVA incluse) ; les coûts apparaissent à côté
 de la consommation comme pour tout contrat. La **consommation** de
 l'appareil est la consommation horaire rapportée par Tibber, répartie en
-deux demi-heures égales, publiée avec environ une heure de retard.
+deux demi-heures égales, publiée avec environ une heure de retard. C'est la
+seule donnée de l'appareil que le suivi énergétique compte : la consommation
+d'hier et celle du jour sont de simples capteurs (en kWh) pour l'affichage et
+les scènes, jamais additionnés une seconde fois.
 
 Avec un Pulse, Gladys affiche aussi la puissance en direct et le coût du
 jour directement depuis Tibber.
+
+Sur un Gladys plus ancien que 5.2.0, l'intégration fonctionne (prix, capteurs,
+puissance en direct, scènes), mais la consommation n'est pas envoyée au suivi
+énergétique ; la ligne d'état le dit.
+
+### Appareils créés avec la version 0.1.1
+
+La version 0.1.1 publiait la consommation d'hier et celle du jour dans des
+fonctions de type « consommation journalière » (`yesterday_consumption`,
+`today_consumption`). Le suivi énergétique les comptait en plus de la
+consommation par demi-heure : les kWh et les coûts de ces jours-là peuvent y
+apparaître en double. Gladys ne change jamais le type d'une fonction déjà
+créée, donc ces deux fonctions restent sur l'appareil, avec leur historique,
+mais ne reçoivent plus rien. Les nouvelles valeurs vont dans `yesterday_kwh`
+et `today_kwh`. Pour les obtenir et retirer le double compte, supprimez
+l'appareil Tibber puis ajoutez-le de nouveau depuis **Découverte** (son
+historique est alors perdu), ou supprimez seulement les deux anciennes
+fonctions dans l'édition de l'appareil si votre version de Gladys le permet.
 
 ## Dépannage
 
@@ -90,6 +113,7 @@ jour directement depuis Tibber.
 
 ## Confidentialité
 
-Le jeton est stocké chiffré par Gladys et envoyé uniquement aux serveurs de
-Tibber (`api.tibber.com`, `websocket-api.tibber.com`). Votre adresse ne sert
+Le jeton est gardé par Gladys dans sa base (en clair, comme tout champ secret,
+y compris dans ses sauvegardes), jamais réaffiché, et envoyé seulement aux
+serveurs de Tibber (`api.tibber.com`, `websocket-api.tibber.com`). Votre adresse ne sert
 qu'à nommer l'appareil quand la maison n'a pas de surnom.

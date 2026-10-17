@@ -6,6 +6,8 @@ tomorrow), Tibber's price level, your consumption, and, with a Tibber Pulse
 or Watty, the live power. Tibber is a trademark of Tibber AS. Available
 where Tibber sells electricity: Norway, Sweden, Germany and the Netherlands.
 
+Never tested with a real Tibber account or a real Pulse yet.
+
 ## What you get
 
 | Surface                       | Content                                                                                                                                                                                                                                                   |
@@ -63,10 +65,30 @@ in the monthly subscription. Gladys then asks the integration to price
 every half hour from your own Tibber price history (energy price, VAT
 included); the costs appear next to the consumption like any contract. The
 **consumption** of the device is the hourly consumption Tibber reports,
-split in two equal halves, published with about one hour of delay.
+split in two equal halves, published with about one hour of delay. It is the
+only data of the device the energy monitoring counts: yesterday's and
+today's consumption are plain sensors (in kWh) for display and scenes, never
+added a second time.
 
 If you own a Pulse, Gladys also shows the live power and today's cost
 straight from Tibber.
+
+On a Gladys older than 5.2.0 the integration works (prices, sensors, live
+power, scenes), but the consumption is not sent to the energy monitoring;
+the status line says so.
+
+### Devices created with version 0.1.1
+
+Version 0.1.1 published yesterday's and today's consumption in features of
+the "daily consumption" type (`yesterday_consumption`, `today_consumption`).
+The energy monitoring counted them on top of the 30-minute consumption: the
+kWh and costs of those days may show twice there. Gladys never changes the
+type of a created feature, so these two features stay on the device, with
+their history, but receive nothing any more. The new values go to
+`yesterday_kwh` and `today_kwh`. To get them and remove the double count,
+delete the Tibber device and add it again from **Discovery** (its history is
+then lost), or delete only the two old features in the device editor if your
+Gladys version allows it.
 
 ## Troubleshooting
 
@@ -83,6 +105,7 @@ straight from Tibber.
 
 ## Privacy
 
-The token is stored encrypted by Gladys and only sent to Tibber's servers
-(`api.tibber.com`, `websocket-api.tibber.com`). Your address is only used to
+The token is kept by Gladys in its database (in clear, like every secret
+field, its backups included), never shown again, and only sent to Tibber's
+servers (`api.tibber.com`, `websocket-api.tibber.com`). Your address is only used to
 name the device when the home has no nickname.
