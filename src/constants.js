@@ -9,6 +9,10 @@ export const TIBBER_WS_URL = 'wss://websocket-api.tibber.com/v1-beta/gql/subscri
 /** Tibber requires an identifiable User-Agent on the websocket. */
 export const USER_AGENT = 'gladys-tibber/0.1 (+https://github.com/LM1LC3N7/gladys-tibber)';
 export const HTTP_TIMEOUT = 20_000;
+/** A 429 pauses every call: its Retry-After (else 10 min), between 1 min and 6 h. */
+export const RATE_LIMIT = { defaultMs: 10 * 60_000, minMs: 60_000, maxMs: 6 * 60 * 60_000 };
+/** The file kept in the writable /data volume (src/store.js). */
+export const STORE_FILE = 'tibber-state.json';
 
 /** The prices are read at start and every hour (tomorrow appears around 13:00). */
 export const PRICES_INTERVAL = 60 * 60_000;

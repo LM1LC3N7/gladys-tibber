@@ -5,6 +5,9 @@
 
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtempSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
 import { TibberApp } from '../src/app.js';
 import { ACTIONS, SCENE_ACTIONS, SCENE_TRIGGERS, WIDGETS } from '../src/constants.js';
@@ -46,9 +49,12 @@ function setup({
   devices = [],
   gladysVersion = 'v5.2.0',
   logger = quiet,
+  dataDir = mkdtempSync(join(tmpdir(), 'tibber-app-')),
+  clock = { now },
 } = {}) {
-  const state = { tomorrow: true };
-  fake = installFetch({
+  // state.answer(call), when set, answers every Tibber call (a 429, a refusal...).
+  const state = { tomorrow: true, answer: undefined };
+  const routed = {
     viewer: () => gql({ viewer: viewer({ realTimeConsumptionEnabled: realTime }) }),
     prices: () =>
       gql({
@@ -72,7 +78,15 @@ function setup({
         },
       }),
     ...routes,
-  });
+  };
+  fake = installFetch(
+    Object.fromEntries(
+      Object.entries(routed).map(([name, handler]) => [
+        name,
+        (call) => (state.answer ? state.answer(call) : handler(call)),
+      ]),
+    ),
+  );
   const gladys = createFakeGladys({
     selector: 'tibber',
     config,
@@ -83,13 +97,13 @@ function setup({
     },
   });
   const timers = createFakeTimers();
-  const clock = { now };
   const sockets = createSocketFactory();
   const app = new TibberApp({
     gladys,
     logger,
     now: () => clock.now,
     timers,
+    dataDir,
     liveFactory: (options) =>
       new LiveSubscription({ ...options, socketFactory: sockets.factory, timers }),
   });
@@ -102,7 +116,7 @@ function setup({
   gladys.onEnergyPrice((request) => app.energyPrice(request));
   gladys.onEnergyCurrent((request) => app.energyCurrent(request));
   gladys.onAction(ACTIONS.TEST, () => app.testConnection());
-  return { app, gladys, timers, clock, state, sockets };
+  return { app, gladys, timers, clock, state, sockets, dataDir };
 }
 
 test('no token: the status says so', async () => {
@@ -531,6 +545,144 @@ test('disconnection then reconnection (Gladys restarted): status and Discovery p
     }
     await app.stop();
   }
+});
+
+const UNAUTHENTICATED = () =>
+  json({
+    errors: [{ message: 'invalid token', extensions: { code: 'UNAUTHENTICATED' } }],
+    data: null,
+  });
+const tooMany = (retryAfter) =>
+  new Response('{}', {
+    status: 429,
+    headers: retryAfter === undefined ? {} : { 'retry-after': retryAfter },
+  });
+const STORE = 'tibber-state.json';
+
+test('a refused token is kept in /data: no call at a reconnection nor a restart; saving tries again', async () => {
+  const config = { access_token: 'wrong-token-1' };
+  const first = setup({ config });
+  first.state.answer = UNAUTHENTICATED;
+  await first.app.start(config);
+  assert.equal(fake.calls.length, 1);
+  const file = readFileSync(join(first.dataDir, STORE), 'utf8');
+  assert.match(file, /"token": "[0-9a-f]{64}"/);
+  assert.ok(!file.includes('wrong-token-1'), 'never the token itself');
+  // Reconnection to Gladys, and the test button: nothing sent.
+  await first.app.stop();
+  await first.app.start(config);
+  const ack = await first.gladys.fake.action(ACTIONS.TEST);
+  assert.match(ack.data.message.en, /refused the access token/);
+  assert.equal(fake.calls.length, 1);
+  assert.match(first.gladys.fake.connectionStatus.message.en, /refused the access token/);
+  await first.app.stop();
+  // The container restarts: still nothing sent.
+  fake.restore();
+  const second = setup({ config, dataDir: first.dataDir });
+  await second.app.start(config);
+  assert.equal(fake.calls.length, 0);
+  assert.equal(second.gladys.fake.connectionStatus.connected, false);
+  assert.equal(second.timers.pending.size, 0, 'no timer');
+  // Saving the configuration (same token) tries once again.
+  await second.app.start(config, { userSaved: true });
+  assert.ok(fake.calls.length > 0);
+  assert.equal(second.gladys.fake.connectionStatus.connected, true);
+  await second.app.stop();
+});
+
+test('a token refused while running stops every call; a reconnection sends nothing', async () => {
+  const { app, gladys, timers, state, sockets } = setup();
+  await app.start({ access_token: 'tok' });
+  const discoveries = gladys.fake.bodies('POST', '/discovered_device').length;
+  state.answer = UNAUTHENTICATED;
+  await timers.runIntervals();
+  const calls = fake.calls.length;
+  assert.match(gladys.fake.connectionStatus.message.en, /refused the access token/);
+  assert.equal(timers.pending.size, 0, 'no timer left');
+  assert.ok(
+    sockets.sockets.every((s) => s.closed),
+    'the live socket closed',
+  );
+  await app.stop();
+  await app.start({ access_token: 'tok' });
+  assert.equal(fake.calls.length, calls);
+  assert.match(gladys.fake.connectionStatus.message.en, /refused the access token/);
+  assert.equal(
+    gladys.fake.bodies('POST', '/discovered_device').length,
+    discoveries + 1,
+    'the last homes known, for a restarted Gladys',
+  );
+  await app.stop();
+});
+
+test('a 429: a bounded pause on every path, kept across a reconnection and a restart', async () => {
+  const config = { access_token: 'tok' };
+  const { app, gladys, timers, clock, state, dataDir } = setup();
+  await app.start(config);
+  const before = fake.calls.length;
+  state.answer = () => tooMany('5');
+  await timers.runIntervals();
+  assert.equal(fake.calls.length, before + 1, 'the first refused call only');
+  assert.equal(app.pausedUntil, clock.now + 60_000, 'at least one minute');
+  assert.match(gladys.fake.connectionStatus.message.en, /slow down \(429\)/);
+  assert.equal(gladys.fake.connectionStatus.connected, true, 'the prices known are kept');
+  // The button, a reconnection, a scan: no call; Discovery from the last list.
+  const ack = await gladys.fake.action(ACTIONS.TEST);
+  assert.match(ack.data.message.en, /slow down/);
+  const discoveries = gladys.fake.bodies('POST', '/discovered_device').length;
+  const statuses = gladys.fake.connectionStatuses.length;
+  await app.stop();
+  await app.start(config);
+  assert.equal(fake.calls.length, before + 1);
+  assert.equal(gladys.fake.connectionStatuses.length, statuses + 1);
+  assert.equal(gladys.fake.bodies('POST', '/discovered_device').length, discoveries + 1);
+  assert.equal(gladys.fake.discoveredDevices[0].external_id, HOME);
+  await app.stop();
+  // The container restarts during the pause: still no call, a resume timer.
+  const until = app.pausedUntil;
+  fake.restore();
+  const second = setup({ dataDir, clock });
+  await second.app.start(config);
+  assert.equal(fake.calls.length, 0);
+  assert.equal(second.app.pausedUntil, until);
+  assert.match(second.gladys.fake.connectionStatus.message.en, /slow down/);
+  assert.deepEqual(
+    second.timers.timeouts().map((t) => t.ms),
+    [until - clock.now],
+  );
+  // Six hours at most; ten minutes without Retry-After.
+  clock.now = until + 1;
+  second.state.answer = () => tooMany('999999');
+  await second.timers.runTimeouts();
+  assert.equal(fake.calls.length, 1);
+  assert.equal(second.app.pausedUntil, clock.now + 6 * 60 * 60_000);
+  clock.now = second.app.pausedUntil + 1;
+  second.state.answer = () => tooMany();
+  await second.timers.runTimeouts();
+  assert.equal(second.app.pausedUntil, clock.now + 10 * 60_000);
+  // The pause over: back to normal.
+  clock.now = second.app.pausedUntil + 1;
+  second.state.answer = undefined;
+  await second.timers.runTimeouts();
+  assert.equal(second.gladys.fake.connectionStatus.connected, true);
+  assert.match(second.gladys.fake.connectionStatus.message.en, /1 home/);
+  await second.app.stop();
+});
+
+test('viewer failing at a reconnection: Discovery gets the last homes known', async () => {
+  const { app, gladys, state } = setup();
+  await app.start({ access_token: 'tok' });
+  const devices = gladys.fake.discoveredDevices;
+  const discoveries = gladys.fake.bodies('POST', '/discovered_device').length;
+  await app.stop();
+  state.answer = () => {
+    throw new TypeError('fetch failed');
+  };
+  await app.start({ access_token: 'tok' });
+  assert.equal(gladys.fake.bodies('POST', '/discovered_device').length, discoveries + 1);
+  assert.deepEqual(gladys.fake.discoveredDevices, devices);
+  assert.match(gladys.fake.connectionStatus.message.en, /unreachable/);
+  await app.stop();
 });
 
 test('the test button lists the homes and their current price', async () => {

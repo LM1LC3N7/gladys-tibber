@@ -24,8 +24,12 @@ COPY index.js ./
 COPY src ./src
 COPY gladys-assistant-integration.json ./
 
-# The only writable location allowed at runtime.
+# The only writable location allowed at runtime (the refused-token block and
+# the 429 pause are kept there). Docker creates a new volume with the owner of
+# the image's /data, so it must belong to `node`, and before VOLUME: changes
+# made to /data after it are discarded.
 ENV NODE_ENV=production
+RUN mkdir -p /data && chown node:node /data
 VOLUME ["/data"]
 
 # Run as an unprivileged user (already present in the node image).

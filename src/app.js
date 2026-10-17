@@ -6,6 +6,7 @@
 // the SDK handlers to it.
 // -----------------------------------------------------------------------------
 
+import { join } from 'node:path';
 import { createLogger } from '@gladysassistant/integration-sdk';
 import { normalizeConfig } from './config.js';
 import {
@@ -13,6 +14,8 @@ import {
   CONSUMPTION_INTERVAL,
   LIVE_THROTTLE,
   PRICES_INTERVAL,
+  RATE_LIMIT,
+  STORE_FILE,
   TOMORROW_FROM,
   TOMORROW_RETRY,
   WIDGETS,
@@ -42,6 +45,7 @@ import {
 } from './tibber/model.js';
 import { powerEvents, priceEvents, tomorrowEvent } from './triggers.js';
 import { TibberError } from './http.js';
+import { Store } from './store.js';
 import { liveWidget, pricesWidget } from './widget.js';
 
 const defaultTimers = { setTimeout, clearTimeout, setInterval, clearInterval };
@@ -54,6 +58,7 @@ export class TibberApp {
     timers = defaultTimers,
     clientFactory = (token) => new TibberClient({ token }),
     liveFactory = (options) => new LiveSubscription(options),
+    dataDir = process.env.DATA_DIR ?? '/data',
   }) {
     this.gladys = gladys;
     this.logger = logger;
@@ -61,13 +66,24 @@ export class TibberApp {
     this.timers = timers;
     this.clientFactory = clientFactory;
     this.liveFactory = liveFactory;
+    this.store = new Store({ filePath: join(dataDir, STORE_FILE), logger });
     this.config = normalizeConfig();
+    this.raw = {};
     this.client = undefined;
     /** homeId -> entry { home, slots, price, announced: Set, totals, live, lastLive, lastLiveAt, lastPower, liveConnected, consumptionWarned } */
     this.homes = new Map();
+    /** HMAC of the token the homes above were read with (src/store.js). */
+    this.homesKey = undefined;
+    /** HMAC of the current token. */
+    this.tokenKey = undefined;
+    /** The current token was refused by Tibber: no call until the configuration is saved. */
+    this.refused = false;
+    /** End of a 429 pause (ms): no call at all before, on every path. */
+    this.pausedUntil = 0;
     this.timerIds = [];
     this.tickTimer = undefined;
     this.tomorrowTimer = undefined;
+    this.resumeTimer = undefined;
     this.lastStatus = undefined;
     /** false on a Gladys older than 5.2.0 (no publishEnergyConsumption). */
     this.energySupported = true;
@@ -77,8 +93,13 @@ export class TibberApp {
 
   // --- Lifecycle -------------------------------------------------------------
 
-  start(raw = {}) {
-    return this.serialize(() => this.doStart(raw));
+  /**
+   * (Re)start with a configuration. `userSaved`: the user saved the
+   * configuration (onConfigUpdated), which lifts a refused-token block, even
+   * with the same token; a reconnection to Gladys keeps it, and the 429 pause.
+   */
+  start(raw = {}, { userSaved = false } = {}) {
+    return this.serialize(() => this.doStart(raw, { userSaved }));
   }
 
   stop() {
@@ -91,26 +112,64 @@ export class TibberApp {
     return run;
   }
 
-  async doStart(raw) {
+  async doStart(raw, { userSaved = false } = {}) {
     await this.doStop();
     // Gladys keeps the status in memory only: a (re)connection may follow a
     // restart of the core, so the status is published again, never assumed kept.
     this.lastStatus = undefined;
     const generation = ++this.generation;
+    this.raw = raw ?? {};
     this.config = normalizeConfig(raw);
-    this.client = this.clientFactory(this.config.accessToken);
+    this.client = this.gate(this.clientFactory(this.config.accessToken));
+    await this.store.load();
+    // A 429 pause survives a restart of the container (kept in /data).
+    const saved = Number(this.store.get('meta', 'pausedUntil'));
+    if (Number.isFinite(saved) && saved > this.pausedUntil) {
+      this.pausedUntil = saved;
+    }
     if (!this.config.accessToken) {
+      this.tokenKey = undefined;
+      this.refused = false;
       await this.setStatus(false, T.noToken);
       return;
     }
+    this.tokenKey = await this.store.tokenKey(this.config.accessToken);
+    if (userSaved && this.store.get('refusals', 'token')) {
+      await this.store.set('refusals', 'token', null);
+    }
+    this.refused = this.store.get('refusals', 'token') === this.tokenKey;
+    if (this.refused) {
+      // The same token Tibber refused: not sent again until the user saves.
+      this.logger.warn('Tibber refused this access token earlier: not tried again');
+      await this.setStatus(false, T.badToken);
+      await this.publishKnownHomes();
+      return;
+    }
+    if (this.now() < this.pausedUntil) {
+      await this.setStatus(this.homes.size > 0, T.paused(this.pausedUntil));
+      await this.publishKnownHomes();
+      this.scheduleResume();
+      return;
+    }
     await this.checkEnergySupport();
+    let discovered = false;
     try {
       await this.discover();
+      discovered = true;
       await this.refreshPrices();
       await this.refreshConsumption();
     } catch (err) {
       await this.reportError(err);
+      if (!discovered) {
+        // Gladys may have restarted: the last homes known stay in Discovery.
+        await this.publishKnownHomes();
+      }
       if (err instanceof TibberError && (err.code === 'bad_token' || err.code === 'no_token')) {
+        return;
+      }
+      if (err instanceof TibberError && err.code === 'rate_limited' && !discovered) {
+        // No home read yet: start again once the pause is over.
+        this.scheduleResume();
         return;
       }
     }
@@ -141,12 +200,89 @@ export class TibberApp {
     this.timerIds = [];
     this.timers.clearTimeout(this.tickTimer);
     this.timers.clearTimeout(this.tomorrowTimer);
+    this.timers.clearTimeout(this.resumeTimer);
     this.tickTimer = undefined;
     this.tomorrowTimer = undefined;
+    this.resumeTimer = undefined;
     for (const entry of this.homes.values()) {
       entry.live?.stop();
       entry.live = undefined;
     }
+  }
+
+  /** Start again at the end of the 429 pause: never a dead integration. */
+  scheduleResume() {
+    this.timers.clearTimeout(this.resumeTimer);
+    const generation = this.generation;
+    this.resumeTimer = this.timers.setTimeout(
+      () => {
+        this.resumeTimer = undefined;
+        if (generation === this.generation) {
+          return this.start(this.raw).catch((err) =>
+            this.logger.warn(`Restart failed: ${err.message}`),
+          );
+        }
+      },
+      Math.max(1000, this.pausedUntil - this.now()),
+    );
+  }
+
+  /**
+   * Every Tibber call goes through here: none during a 429 pause nor with a
+   * refused token (no network at all), and their answers set both.
+   */
+  gate(client) {
+    return new Proxy(client, {
+      get: (target, prop) => {
+        const value = target[prop];
+        if (typeof value !== 'function') {
+          return value;
+        }
+        return async (...args) => {
+          if (this.refused) {
+            throw new TibberError('bad_token', 'Tibber refused the access token');
+          }
+          if (this.now() < this.pausedUntil) {
+            throw new TibberError('rate_limited', 'Tibber asked to slow down (429)');
+          }
+          try {
+            return await value.apply(target, args);
+          } catch (err) {
+            await this.noteFailure(err);
+            throw err;
+          }
+        };
+      },
+    });
+  }
+
+  async noteFailure(err) {
+    if (!(err instanceof TibberError)) {
+      return;
+    }
+    if (err.code === 'rate_limited') {
+      const wanted = Number.isFinite(err.retryAfter) ? err.retryAfter * 1000 : RATE_LIMIT.defaultMs;
+      const until = this.now() + Math.min(RATE_LIMIT.maxMs, Math.max(RATE_LIMIT.minMs, wanted));
+      if (until > this.pausedUntil) {
+        this.pausedUntil = until;
+        await this.store.set('meta', 'pausedUntil', String(until));
+      }
+    } else if (err.code === 'bad_token' && this.tokenKey && !this.refused) {
+      this.refused = true;
+      await this.store.set('refusals', 'token', this.tokenKey);
+    }
+  }
+
+  /** The Discovery list from the homes last read with this token (none if unknown). */
+  async publishKnownHomes() {
+    if (this.homes.size === 0 || this.homesKey !== this.tokenKey) {
+      return;
+    }
+    await this.gladys
+      .publishDiscoveredDevices(
+        [...this.homes.values()].map((e) => buildHomeDevice(this.gladys, e.home)),
+      )
+      .catch((err) => this.logger.warn(`Publishing the discovered devices failed: ${err.message}`));
   }
 
   async setStatus(connected, message) {
@@ -163,11 +299,17 @@ export class TibberApp {
   async reportError(err) {
     this.logger.warn(`Tibber: ${err.message}`);
     if (err instanceof TibberError && err.code === 'bad_token') {
+      // Stop every timer and the live sockets: nothing more is sent with it.
+      await this.doStop();
       await this.setStatus(false, T.badToken);
       return;
     }
     if (err instanceof TibberError && err.code === 'no_token') {
       await this.setStatus(false, T.noToken);
+      return;
+    }
+    if (err instanceof TibberError && err.code === 'rate_limited') {
+      await this.setStatus(this.homes.size > 0, T.paused(this.pausedUntil));
       return;
     }
     await this.setStatus(this.homes.size > 0, T.unreachable(err.message));
@@ -206,6 +348,11 @@ export class TibberApp {
   // --- Discovery -------------------------------------------------------------------
 
   async discover() {
+    if (this.refused || this.now() < this.pausedUntil) {
+      // Scan during a block or a pause: the last known homes, no call.
+      await this.publishKnownHomes();
+      return;
+    }
     const viewer = await this.client.viewer();
     const homes = new Map();
     for (const raw of viewer.homes ?? []) {
@@ -234,6 +381,7 @@ export class TibberApp {
       });
     }
     this.homes = homes;
+    this.homesKey = this.tokenKey;
     if (this.homes.size === 0) {
       await this.setStatus(false, T.noHome);
     }
@@ -575,6 +723,9 @@ export class TibberApp {
       }
       if (err instanceof TibberError && err.code === 'no_token') {
         return T.noToken;
+      }
+      if (err instanceof TibberError && err.code === 'rate_limited') {
+        return T.paused(this.pausedUntil);
       }
       return T.unreachable(err.message);
     }

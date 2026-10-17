@@ -97,7 +97,12 @@ dashboard chart set on one of the two old features must be pointed at
 ## Troubleshooting
 
 - **"Tibber refused the access token"**: the token was revoked or mistyped;
-  create a new one on developer.tibber.com.
+  create a new one on developer.tibber.com. A refused token is not sent
+  again, even after a restart, until you save the configuration (saving tries
+  once more, even with the same token).
+- **"Tibber asked to slow down (429)"**: no call at all until the time shown
+  (Tibber's Retry-After, between 1 minute and 6 hours, kept across a
+  restart); the last values stay, then everything resumes by itself.
 - **"No home with an active subscription"**: the account has no running
   Tibber contract yet.
 - **No live power**: the home needs a Tibber Pulse or Watty with real-time
@@ -112,4 +117,6 @@ dashboard chart set on one of the two old features must be pointed at
 The token is kept by Gladys in its database (in clear, like every secret
 field, its backups included), never shown again, and only sent to Tibber's
 servers (`api.tibber.com`, `websocket-api.tibber.com`). Your address is only used to
-name the device when the home has no nickname.
+name the device when the home has no nickname. The `/data` volume of the
+integration holds only a random key, a keyed hash (HMAC) of a refused token
+(never the token) and the end of a 429 pause.

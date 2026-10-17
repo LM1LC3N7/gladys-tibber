@@ -16,11 +16,25 @@ export function setFetch(impl) {
 }
 
 export class TibberError extends Error {
-  constructor(code, message) {
+  /** `retryAfter`: the seconds of a Retry-After header (429), when given. */
+  constructor(code, message, { retryAfter } = {}) {
     super(message);
     this.name = 'TibberError';
     this.code = code;
+    this.retryAfter = retryAfter;
   }
+}
+
+/** Retry-After in seconds (a number of seconds or an HTTP date), undefined otherwise. */
+export function parseRetryAfter(value, now = Date.now()) {
+  if (typeof value !== 'string' || value.trim() === '') {
+    return undefined;
+  }
+  if (/^\d+$/.test(value.trim())) {
+    return Number(value.trim());
+  }
+  const at = Date.parse(value);
+  return Number.isFinite(at) ? Math.max(0, Math.ceil((at - now) / 1000)) : undefined;
 }
 
 /** POST a GraphQL query; resolves `data`, throws a TibberError otherwise. */
@@ -48,6 +62,11 @@ export async function graphql(token, query, variables = {}, { url = TIBBER_API_U
   const text = await response.text();
   if (response.status === 401 || response.status === 403) {
     throw new TibberError('bad_token', 'Tibber refused the access token');
+  }
+  if (response.status === 429) {
+    throw new TibberError('rate_limited', 'Tibber asked to slow down (429)', {
+      retryAfter: parseRetryAfter(response.headers?.get?.('retry-after') ?? undefined),
+    });
   }
   if (!response.ok) {
     throw new TibberError('http', `Tibber answered ${response.status}: ${text.slice(0, 200)}`);

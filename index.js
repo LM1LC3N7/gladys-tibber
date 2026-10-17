@@ -33,12 +33,15 @@ gladys.onEnergyCurrent((request) => app.energyCurrent(request));
 gladys.onAction(ACTIONS.TEST, () => app.testConnection());
 
 // --- Configuration changed by the user ----------------------------------------
+// Saving lifts a refused-token block (even with the same token); the 429
+// pause stays.
 gladys.onConfigUpdated((config) => {
   logger.info('Configuration updated: restarting');
-  return app.start(config);
+  return app.start(config, { userSaved: true });
 });
 
 // --- Connection lifecycle ------------------------------------------------------
+// A reconnection keeps the refused-token block and the 429 pause (kept in /data).
 gladys.on('connected', async () => {
   try {
     await app.start(await gladys.getConfig());

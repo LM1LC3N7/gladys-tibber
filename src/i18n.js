@@ -8,9 +8,13 @@ export const T = {
     fr: 'Aucun jeton Tibber : collez-le dans la configuration (developer.tibber.com).',
   },
   badToken: {
-    en: 'Tibber refused the access token: create a new one on developer.tibber.com.',
-    fr: 'Tibber a refusé le jeton : créez-en un nouveau sur developer.tibber.com.',
+    en: 'Tibber refused the access token: not tried again until you save the configuration (create a new token on developer.tibber.com if needed).',
+    fr: "Tibber a refusé le jeton : plus d'essai tant que la configuration n'est pas enregistrée (créez un nouveau jeton sur developer.tibber.com si besoin).",
   },
+  paused: (until) => ({
+    en: `Tibber asked to slow down (429): no call before ${new Date(until).toISOString().slice(11, 16)} UTC.`,
+    fr: `Tibber a demandé de ralentir (429) : aucun appel avant ${new Date(until).toISOString().slice(11, 16)} UTC.`,
+  }),
   noHome: {
     en: 'The Tibber account has no home with an active subscription.',
     fr: "Le compte Tibber n'a aucune maison avec un abonnement actif.",

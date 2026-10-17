@@ -103,7 +103,12 @@ est à repointer vers `yesterday_kwh` ou `today_kwh`.
 ## Dépannage
 
 - **« Tibber a refusé le jeton »** : le jeton a été révoqué ou mal copié ;
-  créez-en un nouveau sur developer.tibber.com.
+  créez-en un nouveau sur developer.tibber.com. Un jeton refusé n'est plus
+  envoyé, même après un redémarrage, tant que la configuration n'est pas
+  enregistrée (l'enregistrer fait un nouvel essai, même avec le même jeton).
+- **« Tibber a demandé de ralentir (429) »** : aucun appel avant l'heure
+  indiquée (le Retry-After de Tibber, entre 1 minute et 6 heures, gardé après
+  un redémarrage) ; les dernières valeurs restent, puis tout reprend seul.
 - **« Aucune maison avec un abonnement actif »** : le compte n'a pas encore
   de contrat Tibber en cours.
 - **Pas de puissance en direct** : la maison doit avoir un Tibber Pulse ou
@@ -120,4 +125,6 @@ est à repointer vers `yesterday_kwh` ou `today_kwh`.
 Le jeton est gardé par Gladys dans sa base (en clair, comme tout champ secret,
 y compris dans ses sauvegardes), jamais réaffiché, et envoyé seulement aux
 serveurs de Tibber (`api.tibber.com`, `websocket-api.tibber.com`). Votre adresse ne sert
-qu'à nommer l'appareil quand la maison n'a pas de surnom.
+qu'à nommer l'appareil quand la maison n'a pas de surnom. Le volume `/data` de
+l'intégration ne contient qu'une clé aléatoire, une empreinte (HMAC) d'un jeton
+refusé (jamais le jeton) et la fin d'une pause 429.

@@ -10,6 +10,20 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Fixed
+
+- A refused access token is no longer sent again at every reconnection or
+  restart: its keyed hash (HMAC, never the token) is kept in `/data` until
+  the configuration is saved, and a token refused while running stops every
+  call and the live socket.
+- An HTTP 429 now pauses every call, the test button and a scan included
+  (Retry-After, else 10 minutes, between 1 minute and 6 hours), kept across a
+  reconnection and a restart; the integration resumes by itself afterwards.
+- When Tibber cannot be read at a reconnection (429, refused token, network),
+  Discovery gets the last homes known instead of staying empty.
+- The image creates `/data` owned by the `node` user, so the state above can
+  be written.
+
 ## [0.1.3] - 2026-10-17
 
 ### Fixed
