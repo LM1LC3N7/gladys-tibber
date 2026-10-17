@@ -93,6 +93,9 @@ export class TibberApp {
 
   async doStart(raw) {
     await this.doStop();
+    // Gladys keeps the status in memory only: a (re)connection may follow a
+    // restart of the core, so the status is published again, never assumed kept.
+    this.lastStatus = undefined;
     const generation = ++this.generation;
     this.config = normalizeConfig(raw);
     this.client = this.clientFactory(this.config.accessToken);

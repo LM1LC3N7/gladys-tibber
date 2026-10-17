@@ -504,6 +504,35 @@ test('a refused token stops the integration and says so', async () => {
   assert.match(test.data.message.fr, /a refusé le jeton/);
 });
 
+test('disconnection then reconnection (Gladys restarted): status and Discovery published again', async () => {
+  const unauthenticated = () =>
+    json({
+      errors: [{ message: 'invalid token', extensions: { code: 'UNAUTHENTICATED' } }],
+      data: null,
+    });
+  for (const [config, routes] of [
+    [{ access_token: 'tok' }, {}],
+    [{ access_token: 'bad' }, { viewer: unauthenticated }],
+    [{}, {}],
+  ]) {
+    fake?.restore();
+    const { app, gladys } = setup({ config, routes });
+    await app.start(config);
+    const statuses = gladys.fake.connectionStatuses.length;
+    const discoveries = gladys.fake.bodies('POST', '/discovered_device').length;
+    const before = gladys.fake.connectionStatus;
+    // index.js: 'disconnected' stops, 'connected' starts again.
+    await app.stop();
+    await app.start(config);
+    assert.equal(gladys.fake.connectionStatuses.length, statuses + 1);
+    assert.deepEqual(gladys.fake.connectionStatus, before);
+    if (config.access_token === 'tok') {
+      assert.equal(gladys.fake.bodies('POST', '/discovered_device').length, discoveries + 1);
+    }
+    await app.stop();
+  }
+});
+
 test('the test button lists the homes and their current price', async () => {
   const { app, gladys } = setup();
   await app.start({ access_token: 'tok' });
