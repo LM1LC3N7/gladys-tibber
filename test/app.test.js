@@ -5,7 +5,7 @@
 
 import { afterEach, test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createFakeGladys } from '@gladysassistant/integration-sdk/testing';
@@ -667,6 +667,56 @@ test('a 429: a bounded pause on every path, kept across a reconnection and a res
   assert.equal(second.gladys.fake.connectionStatus.connected, true);
   assert.match(second.gladys.fake.connectionStatus.message.en, /1 home/);
   await second.app.stop();
+});
+
+test('a pause end far away in /data is cut to 6 hours and written back; one timer only', async () => {
+  const dataDir = mkdtempSync(join(tmpdir(), 'tibber-app-'));
+  writeFileSync(
+    join(dataDir, STORE),
+    JSON.stringify({ meta: { pausedUntil: String(NOW + 30 * 24 * 60 * 60_000) } }),
+  );
+  const { app, timers, clock } = setup({ dataDir });
+  await app.start({ access_token: 'tok' });
+  const sixHours = 6 * 60 * 60_000;
+  assert.equal(app.pausedUntil, clock.now + sixHours);
+  assert.equal(
+    JSON.parse(readFileSync(join(dataDir, STORE), 'utf8')).meta.pausedUntil,
+    String(clock.now + sixHours),
+  );
+  assert.equal(fake.calls.length, 0);
+  assert.deepEqual(
+    timers.timeouts().map((t) => t.ms),
+    [sixHours],
+  );
+  // The timer firing early (same clock) starts again with one timer, not a loop.
+  await timers.runTimeouts();
+  assert.equal(timers.timeouts().length, 1);
+  assert.ok(timers.timeouts()[0].ms <= sixHours);
+  assert.equal(fake.calls.length, 0);
+  await app.stop();
+});
+
+test('a reconnection during a 429 pause: the known prices still follow the slots', async () => {
+  const { app, gladys, timers, clock, state } = setup();
+  await app.start({ access_token: 'tok' });
+  assert.equal(gladys.fake.lastState(`${HOME}:price`), 0.9);
+  state.answer = () => tooMany('21600');
+  await timers.runIntervals();
+  assert.ok(app.pausedUntil > clock.now);
+  await app.stop();
+  await app.start({ access_token: 'tok' });
+  assert.ok(app.tickTimer !== undefined, 'the slot tick runs during the pause');
+  const calls = fake.calls.length;
+  // The next slot begins: the sensors and energyCurrent move, without any call.
+  const [entry] = app.homes.values();
+  clock.now = Date.parse(entry.price.slot.endsAt) + 1_000;
+  const tick = timers.pending.get(app.tickTimer);
+  timers.pending.delete(tick.id);
+  await tick.fn();
+  assert.equal(gladys.fake.lastState(`${HOME}:price`), 0.85);
+  assert.equal((await app.energyCurrent({})).price, 0.85);
+  assert.equal(fake.calls.length, calls);
+  await app.stop();
 });
 
 test('viewer failing at a reconnection: Discovery gets the last homes known', async () => {

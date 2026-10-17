@@ -122,10 +122,17 @@ export class TibberApp {
     this.config = normalizeConfig(raw);
     this.client = this.gate(this.clientFactory(this.config.accessToken));
     await this.store.load();
-    // A 429 pause survives a restart of the container (kept in /data).
+    // A 429 pause survives a restart of the container (kept in /data), never
+    // longer than RATE_LIMIT.maxMs from now (a damaged or far value is cut
+    // down and written back).
     const saved = Number(this.store.get('meta', 'pausedUntil'));
     if (Number.isFinite(saved) && saved > this.pausedUntil) {
       this.pausedUntil = saved;
+    }
+    const longest = this.now() + RATE_LIMIT.maxMs;
+    if (this.pausedUntil > longest) {
+      this.pausedUntil = longest;
+      await this.store.set('meta', 'pausedUntil', String(longest));
     }
     if (!this.config.accessToken) {
       this.tokenKey = undefined;
@@ -148,6 +155,7 @@ export class TibberApp {
     if (this.now() < this.pausedUntil) {
       await this.setStatus(this.homes.size > 0, T.paused(this.pausedUntil));
       await this.publishKnownHomes();
+      await this.keepTicking();
       this.scheduleResume();
       return;
     }
@@ -168,7 +176,9 @@ export class TibberApp {
         return;
       }
       if (err instanceof TibberError && err.code === 'rate_limited' && !discovered) {
-        // No home read yet: start again once the pause is over.
+        // No home read yet: start again once the pause is over; the prices
+        // already known keep moving meanwhile.
+        await this.keepTicking();
         this.scheduleResume();
         return;
       }
@@ -210,6 +220,18 @@ export class TibberApp {
     }
   }
 
+  /**
+   * During a pause: the prices already known (memory, no call) still follow
+   * the slots, the triggers fire and energyCurrent stays right.
+   */
+  async keepTicking() {
+    if (this.homes.size === 0 || this.homesKey !== this.tokenKey) {
+      return;
+    }
+    await this.tick().catch((err) => this.logger.warn(`Tick failed: ${err.message}`));
+    this.scheduleTick();
+  }
+
   /** Start again at the end of the 429 pause: never a dead integration. */
   scheduleResume() {
     this.timers.clearTimeout(this.resumeTimer);
@@ -223,7 +245,8 @@ export class TibberApp {
           );
         }
       },
-      Math.max(1000, this.pausedUntil - this.now()),
+      // Bounded: above 2^31-1 ms Node would fire at once, in a loop.
+      Math.min(RATE_LIMIT.maxMs, Math.max(1000, this.pausedUntil - this.now())),
     );
   }
 

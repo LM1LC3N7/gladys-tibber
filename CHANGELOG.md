@@ -19,6 +19,10 @@ the notes of the version's GitHub Release.
 - An HTTP 429 now pauses every call, the test button and a scan included
   (Retry-After, else 10 minutes, between 1 minute and 6 hours), kept across a
   reconnection and a restart; the integration resumes by itself afterwards.
+  A pause end read back from `/data` is never more than 6 hours away (cut
+  down and written back), and during a pause the prices already known keep
+  following the slots (sensors, cheap-period and price-level triggers, the
+  current price of the energy contract).
 - When Tibber cannot be read at a reconnection (429, refused token, network),
   Discovery gets the last homes known instead of staying empty.
 - The image creates `/data` owned by the `node` user, so the state above can
