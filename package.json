@@ -1,6 +1,6 @@
 {
   "name": "gladys-tibber",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "private": true,
   "description": "Tibber for Gladys Assistant: electricity prices and levels, cheap hours, consumption and cost, Tibber Pulse live power, scene triggers, a dashboard widget and a delegated energy contract.",
   "type": "module",
