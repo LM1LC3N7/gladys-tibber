@@ -10,6 +10,8 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-10-23
+
 ## [0.1.4] - 2026-10-17
 
 ### Fixed
@@ -91,7 +93,8 @@ the notes of the version's GitHub Release.
   price history, plus the monthly subscription.
 - "Test the connection" button.
 
-[Unreleased]: https://github.com/LM1LC3N7/gladys-tibber/compare/v0.1.4...HEAD
+[Unreleased]: https://github.com/LM1LC3N7/gladys-tibber/compare/v0.1.5...HEAD
+[0.1.5]: https://github.com/LM1LC3N7/gladys-tibber/compare/v0.1.4...v0.1.5
 [0.1.4]: https://github.com/LM1LC3N7/gladys-tibber/compare/v0.1.3...v0.1.4
 [0.1.3]: https://github.com/LM1LC3N7/gladys-tibber/compare/v0.1.2...v0.1.3
 [0.1.2]: https://github.com/LM1LC3N7/gladys-tibber/compare/v0.1.1...v0.1.2
