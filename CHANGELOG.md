@@ -10,6 +10,12 @@ the notes of the version's GitHub Release.
 
 ## [Unreleased]
 
+### Changed
+
+- Declared for Norway, Sweden, Germany and the Netherlands only (`countries: ["NO", "SE", "DE", "NL"]`): the Gladys catalog of an
+  instance located elsewhere no longer lists it in its browse views (the
+  search still finds it). Requires Gladys 5.3.0 or later.
+
 ## [0.1.5] - 2026-10-23
 
 ## [0.1.4] - 2026-10-17

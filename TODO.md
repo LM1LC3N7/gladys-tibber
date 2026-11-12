@@ -2,7 +2,7 @@
 
 ## Before announcing
 
-- [ ] Test on a real Gladys 5.2+ with a real Tibber account: discovery,
+- [ ] Test on a real Gladys 5.3+ with a real Tibber account: discovery,
       prices and the tick over a day, tomorrow's announcement at 13:00, the
       consumption feature filled, a Tibber contract priced, the two widgets.
 - [ ] With a Pulse: the websocket stays connected for days, the throttled
@@ -43,7 +43,8 @@
   keys, removes the old ones and keeps the device id, the other features'
   history and the contract's meter link. Documented in docs fr/en and
   CHANGELOG.
-- **Gladys 5.2.0 required** (manifest; older cores refuse `energy_contracts`).
+- **Gladys 5.3.0 required** (manifest: `countries` needs 5.3.0; older cores
+  refuse `energy_contracts`, 5.2.0).
   Fallback kept for pre-releases: `getStatus().gladys_version` read at
   start; below 5.2.0 no `publishEnergyConsumption` call and a status line
   that says so; an unreadable version is tried anyway (404 = device not
